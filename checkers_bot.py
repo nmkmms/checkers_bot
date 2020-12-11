@@ -141,10 +141,10 @@ def corner_heuristic(move, color):
     return total
 
 
-def moves_sort(move, color, allies, enemies):
+def moves_sort(move, color, allies, enemies, minimax=False):
     enemy_color = 'RED' if color == 'BLACK' else 'BLACK'
     allies, enemies = deepcopy(allies), deepcopy(enemies)
-    total = 0
+    total = num = 0
 
     for ally in allies:
         if move[0] == ally['position']:
@@ -154,10 +154,13 @@ def moves_sort(move, color, allies, enemies):
             break
 
     step = get_next_step(allies, enemies, enemy_color, minimax=True)
-    if abs(step[0] - step[1]) > 6:
+    if step and abs(step[0] - step[1]) > 6:
         total += 5
 
-    return total
+    if not minimax:
+        num += moves_sort(step, color, allies, enemies, minimax=True)
+
+    return total + num
 
 
 def get_next_step(allies, enemies, color, minimax=False):
