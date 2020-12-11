@@ -158,7 +158,7 @@ def moves_sort(move, color, allies, enemies, minimax=False):
         total += 5
 
     if not minimax:
-        num += moves_sort(step, color, allies, enemies, minimax=True)
+        num -= moves_sort(step, color, allies, enemies, minimax=True)
 
     return total + num
 
