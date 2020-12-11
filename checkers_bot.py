@@ -3,25 +3,29 @@ from copy import deepcopy
 from random import choice
 
 TEAM_NAME = 'host1'
+SIDE_CELLS = {1, 2, 3, 4, 5, 12, 13, 20, 21, 28, 29, 30, 31, 32}
+RED_CORNER = {1, 2, 3, 4}
+BLACK_CORNER = {29, 30, 31, 32}
 
 
 def wait(color):
+    """Wait until my turn."""
     now = {}
     while now.get('whose_turn') != color and not now.get('is_finished'):
         now = requests.get("http://localhost:8081/game").json()['data']
 
 
 def get_positions(color):
+    """Get all allies and enemies checkers."""
     board = requests.get("http://localhost:8081/game").json()['data']['board']
-    # print(board)
-    my, enemy = [], []
+    allies, enemies = [], []
     for checker in board:
         if checker['color'] == color:
-            my.append(checker)
+            allies.append(checker)
         else:
-            enemy.append(checker)
+            enemies.append(checker)
 
-    return my, enemy
+    return allies, enemies
 
 
 def make_move(move, header):
@@ -30,6 +34,7 @@ def make_move(move, header):
 
 
 def abs_move(my, enemy, old_position, new_position, beated_position, row, column):
+    """Make abstract move to get beats chain."""
     my, enemy = deepcopy(my), deepcopy(enemy)
     the_checker = None
 
@@ -50,6 +55,7 @@ def abs_move(my, enemy, old_position, new_position, beated_position, row, column
 
 
 def find_to_beat(my, enemy, checker, rec=''):
+    """Find beats chains."""
     checker = deepcopy(checker)
     positions = [checker['position'] for checker in my + enemy]
     enemy_positions = [checker['position'] for checker in enemy]
@@ -115,14 +121,37 @@ def find_to_beat(my, enemy, checker, rec=''):
     return alpha_beats
 
 
-def get_next_step(my, enemy, color):
-    positions = [checker['position'] for checker in my + enemy]
+def one_way_step(coif, checker, positions, check):
+    """Make one step (top or down)."""
+    if checker['column'] != check or checker['row'] % 2 == check // 3:
+        if checker['row'] % 2 == 0 and checker['position'] + coif[0] not in positions and \
+                0 < checker['position'] + coif[0] < 33:
+            return checker['position'], checker['position'] + coif[0]
+        elif checker['row'] % 2 == 1 and checker['position'] + coif[1] not in positions and \
+                0 < checker['position'] + coif[1] < 33:
+            return checker['position'], checker['position'] + coif[1]
+
+
+def moves_sort(move, color):
+    total = 0
+    if move[1] in SIDE_CELLS:
+        total -= 1
+    if (color == 'RED' and move[0] in RED_CORNER) or (color == 'BLACK' and move[0] in BLACK_CORNER):
+        total += 1
+    return total
+
+
+def get_next_step(allies, enemies, color):
+    """Get all possible steps and beats."""
+    positions = [checker['position'] for checker in allies + enemies]
     route, beats = [], []
 
     coif = [4, 3, 5, 4] if color == "RED" else [-4, -5, -3, -4]
+    enemy_coif = [-4, -5, -3, -4] if color == 'RED' else [4, 3, 5, 4]
 
-    for checker in my:
-        temp_beats = find_to_beat(my, enemy, checker)
+    # Beats
+    for checker in allies:
+        temp_beats = find_to_beat(allies, enemies, checker)
         for temp_beat in temp_beats:
             if temp_beat:
                 beats.append((checker['position'], temp_beat))
@@ -131,22 +160,29 @@ def get_next_step(my, enemy, color):
         beats.sort(key=lambda b: -len(b[1]))
         return beats[0][0], beats[0][1][0]
 
-
-    for checker in my:
+    # Basic moves
+    for checker in allies:
         # Top
-        if checker['column'] != 0 or checker['row'] % 2 == 0:
-            if checker['row'] % 2 == 0 and checker['position'] + coif[0] not in positions and 0 < checker['position'] + coif[0] < 33:
-                route.append((checker['position'], checker['position'] + coif[0]))
-            elif checker['row'] % 2 == 1 and checker['position'] + coif[1] not in positions and 0 < checker['position'] + coif[1] < 33:
-                route.append((checker['position'], checker['position'] + coif[1]))
-        # Bottom
-        if checker['column'] != 3 or checker['row'] % 2 == 1:
-            if checker['row'] % 2 == 0 and checker['position'] + coif[2] not in positions and 0 < checker['position'] + coif[2] < 33:
-                route.append((checker['position'], checker['position'] + coif[2]))
-            elif checker['row'] % 2 == 1 and checker['position'] + coif[3] not in positions and 0 < checker['position'] + coif[3] < 33:
-                route.append((checker['position'], checker['position'] + coif[3]))
+        step = one_way_step(coif[:2], checker, positions, 0)
+        if step:
+            route.append(step)
+        if checker['king']:
+            step = one_way_step(enemy_coif[:2], checker, positions, 0)
+            if step:
+                route.append(step)
 
-    return choice(route) if route else None
+        # Bottom
+        step = one_way_step(coif[2:], checker, positions, 3)
+        if step:
+            route.append(step)
+        if checker['king']:
+            step = one_way_step(enemy_coif[2:], checker, positions, 3)
+            if step:
+                route.append(step)
+
+    if route:
+        route.sort(key=lambda r: moves_sort(r, color))
+    return route[0] if route else None
 
 
 def run():
@@ -159,13 +195,14 @@ def run():
     # Start game loop:
     while True:
         wait(color)
-        my, enemy = get_positions(color)
-        step = get_next_step(my, enemy, color)
+        allies, enemies = get_positions(color)
+        step = get_next_step(allies, enemies, color)
         if not step or requests.get("http://localhost:8081/game").json()['data']['is_finished']:
             break
-        print(step)
+        print(step, end='  \t')
         make_move(step, header)
 
+    # Define a winner
     if color == requests.get("http://localhost:8081/game").json()['data']['winner']:
         print('I won!')
     else:
