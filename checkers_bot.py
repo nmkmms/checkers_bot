@@ -2,7 +2,7 @@ import requests
 from copy import deepcopy
 from random import choice
 
-TEAM_NAME = 'host1'
+TEAM_NAME = 'EMAN_MAET'
 SIDE_CELLS = {1, 2, 3, 4, 5, 12, 13, 20, 21, 28, 29, 30, 31, 32}
 RED_CORNER = {1, 2, 3, 4}
 BLACK_CORNER = {29, 30, 31, 32}
@@ -132,16 +132,35 @@ def one_way_step(coif, checker, positions, check):
             return checker['position'], checker['position'] + coif[1]
 
 
-def moves_sort(move, color):
+def corner_heuristic(move, color):
     total = 0
     if move[1] in SIDE_CELLS:
         total -= 1
     if (color == 'RED' and move[0] in RED_CORNER) or (color == 'BLACK' and move[0] in BLACK_CORNER):
-        total += 1
+        total += 2
     return total
 
 
-def get_next_step(allies, enemies, color):
+def moves_sort(move, color, allies, enemies):
+    enemy_color = 'RED' if color == 'BLACK' else 'BLACK'
+    allies, enemies = deepcopy(allies), deepcopy(enemies)
+    total = 0
+
+    for ally in allies:
+        if move[0] == ally['position']:
+            ally['position'] = move[1]
+            ally['row'] = (move[1] - 1) // 4
+            ally['column'] = (move[1] - 1) % 4
+            break
+
+    step = get_next_step(allies, enemies, enemy_color, minimax=True)
+    if abs(step[0] - step[1]) > 6:
+        total += 5
+
+    return total
+
+
+def get_next_step(allies, enemies, color, minimax=False):
     """Get all possible steps and beats."""
     positions = [checker['position'] for checker in allies + enemies]
     route, beats = [], []
@@ -180,8 +199,8 @@ def get_next_step(allies, enemies, color):
             if step:
                 route.append(step)
 
-    if route:
-        route.sort(key=lambda r: moves_sort(r, color))
+    if route and not minimax:
+        route.sort(key=lambda r: corner_heuristic(r, color) + moves_sort(r, color, allies, enemies))
     return route[0] if route else None
 
 
