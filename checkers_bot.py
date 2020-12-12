@@ -1,6 +1,8 @@
 import requests
 from copy import deepcopy
-from random import choice
+import time
+
+LINK = 'http://localhost:8081'
 
 TEAM_NAME = 'EMAN_MAET'
 SIDE_CELLS = {1, 2, 3, 4, 5, 12, 13, 20, 21, 28, 29, 30, 31, 32}
@@ -12,12 +14,16 @@ def wait(color):
     """Wait until my turn."""
     now = {}
     while now.get('whose_turn') != color and not now.get('is_finished'):
-        now = requests.get("http://localhost:8081/game").json()['data']
+        # time.sleep(0.5)
+        now = requests.get(f"{LINK}/game")
+        if now.status_code != 200:
+            continue
+        now = now.json()['data']
 
 
 def get_positions(color):
     """Get all allies and enemies checkers."""
-    board = requests.get("http://localhost:8081/game").json()['data']['board']
+    board = requests.get(f"{LINK}/game").json()['data']['board']
     allies, enemies = [], []
     for checker in board:
         if checker['color'] == color:
@@ -29,7 +35,7 @@ def get_positions(color):
 
 
 def make_move(move, header):
-    resp = requests.post("http://localhost:8081/move", headers=header, json={"move": move})
+    resp = requests.post(f"{LINK}/move", headers=header, json={"move": move})
     print(resp.text)
 
 
@@ -138,6 +144,8 @@ def corner_heuristic(move, color):
         total -= 1
     if (color == 'RED' and move[0] in RED_CORNER) or (color == 'BLACK' and move[0] in BLACK_CORNER):
         total += 2
+    if (move[1] in RED_CORNER and color == 'BLACK') or (move[1] in BLACK_CORNER and color == 'RED'):
+        total -= 1
     return total
 
 
@@ -209,9 +217,10 @@ def get_next_step(allies, enemies, color, minimax=False):
 
 def run():
     # Init the game
-    resp = requests.post(f"http://localhost:8081/game?team_name={TEAM_NAME}")
+    resp = requests.post(f"{LINK}/game?team_name={TEAM_NAME}")
     j = resp.json()
     color = j['data']['color']
+    print(f'My color is {color}')
     header = {'Authorization': f'Token {j["data"]["token"]}'}
 
     # Start game loop:
@@ -219,13 +228,13 @@ def run():
         wait(color)
         allies, enemies = get_positions(color)
         step = get_next_step(allies, enemies, color)
-        if not step or requests.get("http://localhost:8081/game").json()['data']['is_finished']:
+        if not step or requests.get(f"{LINK}/game").json()['data']['is_finished']:
             break
         print(step, end='  \t')
         make_move(step, header)
 
     # Define a winner
-    if color == requests.get("http://localhost:8081/game").json()['data']['winner']:
+    if color == requests.get(f"{LINK}/game").json()['data']['winner']:
         print('I won!')
     else:
         print('I lost:(')
